@@ -8,6 +8,7 @@ BEGIN {
 
 use strict;
 use warnings;
+use feature "unicode_strings";
 plan "no_plan";
 
 my @pats=(
@@ -41,9 +42,6 @@ my @pats=(
 	    "[:^space:]",
 	    "[:blank:]",
 	    "[:^blank:]" );
-if (1 or $ENV{PERL_TEST_LEGACY_POSIX_CC}) {
-    $::TODO = "Only works under PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS = 0";
-}
 
 sub rangify {
     my $ary= shift;
@@ -88,10 +86,8 @@ while (@pats) {
                 chop $str;
             }
             if ($str=~/[$yes][$no]/){
-                TODO: {
-                    unlike($str,qr/[$yes][$no]/,
-                        "chr($b)=~/[$yes][$no]/ should not match under $type");
-                }
+                unlike($str,qr/[$yes][$no]/,
+                    "chr($b)=~/[$yes][$no]/ should not match under $type");
                 push @{$err_by_type{$type}},$b;
             }
             $got{"[$yes]"}{$type} = $str=~/[$yes]/ ? 1 : 0;
@@ -101,20 +97,16 @@ while (@pats) {
         }
         foreach my $which ("[$yes]","[$no]","[^$yes]","[^$no]") {
             if ($got{$which}{'unicode'} != $got{$which}{'not-unicode'}){
-                TODO: {
-                    is($got{$which}{'unicode'},$got{$which}{'not-unicode'},
-                        "chr($b)=~/$which/ should have the same results regardless of internal string encoding");
-                }
+                is($got{$which}{'unicode'},$got{$which}{'not-unicode'},
+                    "chr($b)=~/$which/ should have the same results regardless of internal string encoding");
                 push @{$singles{$which}},$b;
             }
         }
         foreach my $which ($yes,$no) {
             foreach my $strtype ('unicode','not-unicode') {
                 if ($got{"[$which]"}{$strtype} == $got{"[^$which]"}{$strtype}) {
-                    TODO: {
-                        isnt($got{"[$which]"}{$strtype},$got{"[^$which]"}{$strtype},
-                            "chr($b)=~/[$which]/ should not have the same result as chr($b)=~/[^$which]/");
-                    }
+                    isnt($got{"[$which]"}{$strtype},$got{"[^$which]"}{$strtype},
+                        "chr($b)=~/[$which]/ should not have the same result as chr($b)=~/[^$which]/");
                     push @{$complements{$which}{$strtype}},$b;
                 }
             }
@@ -153,8 +145,6 @@ while (@pats) {
         }
     }
 }
-TODO: {
-    is( $description, "", "POSIX and perl charclasses should not depend on string type");
-}
+is( $description, "", "POSIX and perl charclasses should not depend on string type");
 
 __DATA__

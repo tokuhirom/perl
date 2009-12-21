@@ -30,9 +30,9 @@ EOS		EOL,    no	Match "" at end of string.
 EOL		EOL,    no	Match "" at end of line.
 MEOL		EOL,    no	Same, assuming multiline.
 SEOL		EOL,    no	Same, assuming singleline.
-BOUND		BOUND,  no	Match "" at any word boundary
+BOUND		BOUND,  no	Match "" at any word boundary, Posix semantics for non-utf8.
 BOUNDL		BOUND,  no	Match "" at any word boundary
-NBOUND		NBOUND, no	Match "" at any word non-boundary
+NBOUND		NBOUND, no	Match "" at any word non-boundary, Posix semantics for non-utf8.
 NBOUNDL		NBOUND, no	Match "" at any word non-boundary
 GPOS		GPOS,   no	Matches where last m//g left off.
 
@@ -42,13 +42,13 @@ REG_ANY		REG_ANY,    no	Match any one character (except newline).
 SANY		REG_ANY,    no	Match any one character.
 CANY		REG_ANY,    no	Match any one byte.
 ANYOF		ANYOF,  sv	Match character in (or not in) this class.
-ALNUM		ALNUM,  no	Match any alphanumeric character
+ALNUM		ALNUM,  no	Match any alphanumeric character, Posix semantics for non-utf8.
 ALNUML		ALNUM,  no	Match any alphanumeric char in locale
-NALNUM		NALNUM, no	Match any non-alphanumeric character
+NALNUM		NALNUM, no	Match any non-alphanumeric character, Posix semantics for non-utf8.
 NALNUML		NALNUM, no	Match any non-alphanumeric char in locale
-SPACE		SPACE,  no	Match any whitespace character
+SPACE		SPACE,  no	Match any whitespace character, Posix semantics for non-utf8.
 SPACEL		SPACE,  no	Match any whitespace char in locale
-NSPACE		NSPACE, no	Match any non-whitespace character
+NSPACE		NSPACE, no	Match any non-whitespace character, Posix semantics for non-utf8.
 NSPACEL		NSPACE, no	Match any non-whitespace char in locale
 DIGIT		DIGIT,  no	Match any numeric character
 DIGITL		DIGIT,  no	Match any numeric character in locale
@@ -193,6 +193,13 @@ HORIZWS		HORIZWS,   none		horizontal whitespace       (Perl 6)
 NHORIZWS	NHORIZWS,  none		not horizontal whitespace   (Perl 6)
 
 FOLDCHAR	FOLDCHAR,  codepoint 1	codepoint with tricky case folding properties.
+
+ALNUMU		ALNUM,  no	Match any alphanumeric character, Unicode (Latin1) semantics for non-utf8.
+NALNUMU		NALNUM,  no	Match any non-alphanumeric character, Unicode (Latin1) semantics for non-utf8.
+SPACEU		SPACE,  no	Match any whitespace character, Unicode (Latin1) semantics for non-utf8.
+NSPACEU		NSPACE,  no	Match any non-whitespace character, Unicode (Latin1) semantics for non-utf8.
+BOUNDU		BOUND,  no	Match "" at any word boundary, Unicode semantics for non-utf8.
+NBOUNDU		NBOUND, no	Match "" at any word non-boundary, Unicode semantics for non-utf8.
 
 # NEW STUFF ABOVE THIS LINE  
 

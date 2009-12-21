@@ -152,11 +152,9 @@
    rebuild the entire core. as we are required to do if we change regcomp.h
    which is where PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS is defined.
 */
-#if PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS
-#define BROKEN_UNICODE_CHARCLASS_MAPPINGS
-#endif
+#define BROKEN_UNICODE_CHARCLASS_MAPPINGS PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS
 
-#ifdef BROKEN_UNICODE_CHARCLASS_MAPPINGS
+#if BROKEN_UNICODE_CHARCLASS_MAPPINGS != MATCH_RESTRICTIVE
 #define LOAD_UTF8_CHARCLASS_PERL_WORD()   LOAD_UTF8_CHARCLASS_ALNUM()
 #define LOAD_UTF8_CHARCLASS_PERL_SPACE()  LOAD_UTF8_CHARCLASS_SPACE()
 #define LOAD_UTF8_CHARCLASS_POSIX_DIGIT() LOAD_UTF8_CHARCLASS_DIGIT()
@@ -176,11 +174,11 @@
 #endif
 
 
-#define CCC_TRY_AFF(NAME,NAMEL,CLASS,STR,LCFUNC_utf8,FUNC,LCFUNC)                          \
-        case NAMEL:                                                              \
+#define CCC_TRY_AFF(NAME,NAMEL,CLASS,STR,LCFUNC_utf8,FUNC,LCFUNC)                       \
+        case NAMEL:                                                                     \
             PL_reg_flags |= RF_tainted;                                                 \
             /* FALL THROUGH */                                                          \
-        case NAME:                                                                     \
+        case NAME:                                                                      \
             if (!nextchr)                                                               \
                 sayNO;                                                                  \
             if (do_utf8 && UTF8_IS_CONTINUED(nextchr)) {                                \
@@ -203,6 +201,40 @@
                 break;                                                                  \
             }                                                                           \
             if (!(OP(scan) == NAME ? FUNC(nextchr) : LCFUNC(nextchr)))                  \
+                sayNO;                                                                  \
+            nextchr = UCHARAT(++locinput);                                              \
+            break
+
+/* Almost identical to the above, but has a case for a node that matches chars
+ * between 128 and 255 using Unicode (latin1) semantics. */
+#define CCC_TRY_AFF_U(NAME,NAMEU,NAMEL,CLASS,STR,LCFUNC_utf8,FUNC,FUNCU,LCFUNC)         \
+        case NAMEL:                                                              \
+            PL_reg_flags |= RF_tainted;                                                 \
+            /* FALL THROUGH */                                                          \
+        case NAME:                                                                     \
+        case NAMEU:                                                                     \
+            if (!nextchr)                                                               \
+                sayNO;                                                                  \
+            if (do_utf8 && UTF8_IS_CONTINUED(nextchr)) {                                \
+                if (!CAT2(PL_utf8_,CLASS)) {                                            \
+                    bool ok;                                                            \
+                    ENTER;                                                              \
+                    save_re_context();                                                  \
+                    ok=CAT2(is_utf8_,CLASS)((const U8*)STR);                            \
+                    assert(ok);                                                         \
+                    LEAVE;                                                              \
+                }                                                                       \
+                if (!(OP(scan) != NAMEL							\
+                    ? (bool)swash_fetch(CAT2(PL_utf8_,CLASS), (U8*)locinput, do_utf8)   \
+                    : LCFUNC_utf8((U8*)locinput)))                                      \
+                {                                                                       \
+                    sayNO;                                                              \
+                }                                                                       \
+                locinput += PL_utf8skip[nextchr];                                       \
+                nextchr = UCHARAT(locinput);                                            \
+                break;                                                                  \
+            }                                                                           \
+            if (!(OP(scan) == NAMEU ? FUNCU(nextchr) : OP(scan) == NAME ? FUNC(nextchr) : LCFUNC(nextchr)))                  \
                 sayNO;                                                                  \
             nextchr = UCHARAT(++locinput);                                              \
             break
@@ -234,6 +266,38 @@
                 break;                                                                  \
             }                                                                           \
             if ((OP(scan) == NAME ? FUNC(nextchr) : LCFUNC(nextchr)))                   \
+                sayNO;                                                                  \
+            nextchr = UCHARAT(++locinput);                                              \
+            break
+
+#define CCC_TRY_NEG_U(NAME,NAMEU,NAMEL,CLASS,STR,LCFUNC_utf8,FUNC,FUNCU,LCFUNC)                        \
+        case NAMEL:                                                              \
+            PL_reg_flags |= RF_tainted;                                                 \
+            /* FALL THROUGH */                                                          \
+        case NAME :                                                                     \
+        case NAMEU :                                                                     \
+            if (!nextchr && locinput >= PL_regeol)                                      \
+                sayNO;                                                                  \
+            if (do_utf8 && UTF8_IS_CONTINUED(nextchr)) {                                \
+                if (!CAT2(PL_utf8_,CLASS)) {                                            \
+                    bool ok;                                                            \
+                    ENTER;                                                              \
+                    save_re_context();                                                  \
+                    ok=CAT2(is_utf8_,CLASS)((const U8*)STR);                            \
+                    assert(ok);                                                         \
+                    LEAVE;                                                              \
+                }                                                                       \
+                if ((OP(scan) != NAMEL                                                  \
+                    ? (bool)swash_fetch(CAT2(PL_utf8_,CLASS), (U8*)locinput, do_utf8)    \
+                    : LCFUNC_utf8((U8*)locinput)))                                      \
+                {                                                                       \
+                    sayNO;                                                              \
+                }                                                                       \
+                locinput += PL_utf8skip[nextchr];                                       \
+                nextchr = UCHARAT(locinput);                                            \
+                break;                                                                  \
+            }                                                                           \
+            if ((OP(scan) == NAMEU ? FUNCU(nextchr) : OP(scan) == NAME ? FUNC(nextchr) : LCFUNC(nextchr)))                   \
                 sayNO;                                                                  \
             nextchr = UCHARAT(++locinput);                                              \
             break
@@ -1467,6 +1531,7 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 	    PL_reg_flags |= RF_tainted;
 	    /* FALL THROUGH */
 	case BOUND:
+	case BOUNDU:
 	    if (do_utf8) {
 		if (s == PL_bostr)
 		    tmp = '\n';
@@ -1474,25 +1539,25 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		    U8 * const r = reghop3((U8*)s, -1, (U8*)PL_bostr);
 		    tmp = utf8n_to_uvchr(r, UTF8SKIP(r), 0, UTF8_ALLOW_DEFAULT);
 		}
-		tmp = ((OP(c) == BOUND ?
+		tmp = ((OP(c) != BOUNDL ?
 			isALNUM_uni(tmp) : isALNUM_LC_uvchr(UNI_TO_NATIVE(tmp))) != 0);
 		LOAD_UTF8_CHARCLASS_ALNUM();
 		REXEC_FBC_UTF8_SCAN(
-		    if (tmp == !(OP(c) == BOUND ?
+		    if (tmp == !(OP(c) != BOUNDL ?
 				 (bool)swash_fetch(PL_utf8_alnum, (U8*)s, do_utf8) :
 				 isALNUM_LC_utf8((U8*)s)))
 		    {
 			tmp = !tmp;
 			REXEC_FBC_TRYIT;
-		}
+		    }
 		);
 	    }
-	    else {
+	    else {  /* Not utf8 */
 		tmp = (s != PL_bostr) ? UCHARAT(s - 1) : '\n';
-		tmp = ((OP(c) == BOUND ? isALNUM(tmp) : isALNUM_LC(tmp)) != 0);
+		tmp = ((OP(c) == BOUNDU ? isALNUMU(tmp) : OP(c) == BOUND ? isALNUM(tmp) : isALNUM_LC(tmp)) != 0);
 		REXEC_FBC_SCAN(
 		    if (tmp ==
-			!(OP(c) == BOUND ? isALNUM(*s) : isALNUM_LC(*s))) {
+			!(OP(c) == BOUNDU ? isALNUMU((U8) *s) : OP(c) == BOUND ? isALNUM(*s) : isALNUM_LC(*s))) {
 			tmp = !tmp;
 			REXEC_FBC_TRYIT;
 		}
@@ -1505,6 +1570,7 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 	    PL_reg_flags |= RF_tainted;
 	    /* FALL THROUGH */
 	case NBOUND:
+	case NBOUNDU:
 	    if (do_utf8) {
 		if (s == PL_bostr)
 		    tmp = '\n';
@@ -1512,11 +1578,11 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		    U8 * const r = reghop3((U8*)s, -1, (U8*)PL_bostr);
 		    tmp = utf8n_to_uvchr(r, UTF8SKIP(r), 0, UTF8_ALLOW_DEFAULT);
 		}
-		tmp = ((OP(c) == NBOUND ?
-			isALNUM_uni(tmp) : isALNUM_LC_uvchr(UNI_TO_NATIVE(tmp))) != 0);
+		tmp = ((OP(c) != NBOUNDL ?
+		    isALNUM_uni(tmp) : isALNUM_LC_uvchr(UNI_TO_NATIVE(tmp))) != 0);
 		LOAD_UTF8_CHARCLASS_ALNUM();
 		REXEC_FBC_UTF8_SCAN(
-		    if (tmp == !(OP(c) == NBOUND ?
+		    if (tmp == !(OP(c) != NBOUNDL ?
 				 (bool)swash_fetch(PL_utf8_alnum, (U8*)s, do_utf8) :
 				 isALNUM_LC_utf8((U8*)s)))
 			tmp = !tmp;
@@ -1525,11 +1591,10 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 	    }
 	    else {
 		tmp = (s != PL_bostr) ? UCHARAT(s - 1) : '\n';
-		tmp = ((OP(c) == NBOUND ?
-			isALNUM(tmp) : isALNUM_LC(tmp)) != 0);
+		tmp = ((OP(c) == NBOUNDU ? isALNUMU(tmp) : OP(c) == NBOUND ? isALNUM(tmp) : isALNUM_LC(tmp)) != 0);
 		REXEC_FBC_SCAN(
 		    if (tmp ==
-			!(OP(c) == NBOUND ? isALNUM(*s) : isALNUM_LC(*s)))
+			!(OP(c) == NBOUNDU ? isALNUMU((U8) *s) : OP(c) == NBOUND ? isALNUM(*s) : isALNUM_LC(*s)))
 			tmp = !tmp;
 		    else REXEC_FBC_TRYIT;
 		);
@@ -1538,10 +1603,11 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		goto got_it;
 	    break;
 	case ALNUM:
+	case ALNUMU:
 	    REXEC_FBC_CSCAN_PRELOAD(
 		LOAD_UTF8_CHARCLASS_PERL_WORD(),
 		swash_fetch(RE_utf8_perl_word, (U8*)s, do_utf8),
-		isALNUM(*s)
+		OP(c) == ALNUMU ? isALNUMU((U8) *s) : isALNUM(*s)
 	    );
 	case ALNUML:
 	    REXEC_FBC_CSCAN_TAINT(
@@ -1549,10 +1615,11 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		isALNUM_LC(*s)
 	    );
 	case NALNUM:
+	case NALNUMU:
 	    REXEC_FBC_CSCAN_PRELOAD(
 		LOAD_UTF8_CHARCLASS_PERL_WORD(),
 		!swash_fetch(RE_utf8_perl_word, (U8*)s, do_utf8),
-		!isALNUM(*s)
+		! (OP(c) == NALNUMU ? isALNUMU((U8) *s) : isALNUM(*s))
 	    );
 	case NALNUML:
 	    REXEC_FBC_CSCAN_TAINT(
@@ -1560,10 +1627,11 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		!isALNUM_LC(*s)
 	    );
 	case SPACE:
+	case SPACEU:
 	    REXEC_FBC_CSCAN_PRELOAD(
 		LOAD_UTF8_CHARCLASS_PERL_SPACE(),
 		*s == ' ' || swash_fetch(RE_utf8_perl_space,(U8*)s, do_utf8),
-		isSPACE(*s)
+		OP(c) == SPACEU ? isSPACEU((U8) *s) : isSPACE(*s)
 	    );
 	case SPACEL:
 	    REXEC_FBC_CSCAN_TAINT(
@@ -1571,10 +1639,11 @@ S_find_byclass(pTHX_ regexp * prog, const regnode *c, char *s,
 		isSPACE_LC(*s)
 	    );
 	case NSPACE:
+	case NSPACEU:
 	    REXEC_FBC_CSCAN_PRELOAD(
 		LOAD_UTF8_CHARCLASS_PERL_SPACE(),
 		!(*s == ' ' || swash_fetch(RE_utf8_perl_space,(U8*)s, do_utf8)),
-		!isSPACE(*s)
+		!(OP(c) == NSPACEU ? isSPACEU((U8) *s) : isSPACE(*s))
 	    );
 	case NSPACEL:
 	    REXEC_FBC_CSCAN_TAINT(
@@ -2194,7 +2263,7 @@ Perl_regexec_flags(pTHX_ REGEXP * const rx, char *stringarg, register char *stre
 		RE_PV_QUOTED_DECL(quoted,do_utf8,PERL_DEBUG_PAD_ZERO(1),
 		    s,strend-s,60);
 		PerlIO_printf(Perl_debug_log,
-		    "Matching stclass %.*s against %s (%d chars)\n",
+		    "Matching stclass %.*s against %s (%d bytes)\n",
 		    (int)SvCUR(prop), SvPVX_const(prop),
 		     quoted, (int)(strend - s));
 	    }
@@ -3462,7 +3531,9 @@ S_regmatch(pTHX_ regmatch_info *reginfo, regnode *prog)
 	    PL_reg_flags |= RF_tainted;
 	    /* FALL THROUGH */
 	case BOUND:
+	case BOUNDU:
 	case NBOUND:
+	case NBOUNDU:
 	    /* was last char in word? */
 	    if (do_utf8) {
 		if (locinput == PL_bostr)
@@ -3472,7 +3543,7 @@ S_regmatch(pTHX_ regmatch_info *reginfo, regnode *prog)
 
 		    ln = utf8n_to_uvchr(r, UTF8SKIP(r), 0, uniflags);
 		}
-		if (OP(scan) == BOUND || OP(scan) == NBOUND) {
+		if (OP(scan) != BOUNDL && OP(scan) != NBOUNDL) {
 		    ln = isALNUM_uni(ln);
 		    LOAD_UTF8_CHARCLASS_ALNUM();
 		    n = swash_fetch(PL_utf8_alnum, (U8*)locinput, do_utf8);
@@ -3485,7 +3556,11 @@ S_regmatch(pTHX_ regmatch_info *reginfo, regnode *prog)
 	    else {
 		ln = (locinput != PL_bostr) ?
 		    UCHARAT(locinput - 1) : '\n';
-		if (OP(scan) == BOUND || OP(scan) == NBOUND) {
+		if (OP(scan) == BOUNDU || OP(scan) == NBOUNDU) {
+		    ln = isALNUMU(ln);
+		    n = isALNUMU(nextchr);
+		}
+		else if (OP(scan) == BOUND || OP(scan) == NBOUND) {
 		    ln = isALNUM(ln);
 		    n = isALNUM(nextchr);
 		}
@@ -3494,8 +3569,9 @@ S_regmatch(pTHX_ regmatch_info *reginfo, regnode *prog)
 		    n = isALNUM_LC(nextchr);
 		}
 	    }
-	    if (((!ln) == (!n)) == (OP(scan) == BOUND ||
-				    OP(scan) == BOUNDL))
+	    if (((!ln) == (!n)) == (OP(scan) == BOUNDU
+				    || OP(scan) == BOUND
+				    || OP(scan) == BOUNDL))
 		    sayNO;
 	    break;
 	case ANYOF:
@@ -3532,11 +3608,11 @@ S_regmatch(pTHX_ regmatch_info *reginfo, regnode *prog)
 		 sayNO;
 	    break;
 	/* Special char classes - The defines start on line 129 or so */
-	CCC_TRY_AFF( ALNUM,  ALNUML, perl_word,   "a", isALNUM_LC_utf8, isALNUM, isALNUM_LC);
-	CCC_TRY_NEG(NALNUM, NALNUML, perl_word,   "a", isALNUM_LC_utf8, isALNUM, isALNUM_LC);
+	CCC_TRY_AFF_U( ALNUM,  ALNUMU, ALNUML, perl_word,   "a", isALNUM_LC_utf8, isALNUM, isALNUMU, isALNUM_LC);
+	CCC_TRY_NEG_U(NALNUM, NALNUMU, NALNUML, perl_word,   "a", isALNUM_LC_utf8, isALNUM, isALNUMU, isALNUM_LC);
 
-	CCC_TRY_AFF( SPACE,  SPACEL, perl_space,  " ", isSPACE_LC_utf8, isSPACE, isSPACE_LC);
-	CCC_TRY_NEG(NSPACE, NSPACEL, perl_space,  " ", isSPACE_LC_utf8, isSPACE, isSPACE_LC);
+	CCC_TRY_AFF_U( SPACE,  SPACEU, SPACEL, perl_space,  " ", isSPACE_LC_utf8, isSPACE, isSPACEU, isSPACE_LC);
+	CCC_TRY_NEG_U(NSPACE, NSPACEU, NSPACEL, perl_space,  " ", isSPACE_LC_utf8, isSPACE, isSPACEU, isSPACE_LC);
 
 	CCC_TRY_AFF( DIGIT,  DIGITL, posix_digit, "0", isDIGIT_LC_utf8, isDIGIT, isDIGIT_LC);
 	CCC_TRY_NEG(NDIGIT, NDIGITL, posix_digit, "0", isDIGIT_LC_utf8, isDIGIT, isDIGIT_LC);
@@ -5635,17 +5711,20 @@ S_regrepeat(pTHX_ const regexp *prog, const regnode *p, I32 max, int depth)
 	}
 	break;
     case ALNUM:
+    case ALNUMU:
 	if (do_utf8) {
 	    loceol = PL_regeol;
 	    LOAD_UTF8_CHARCLASS_ALNUM();
 	    while (hardcount < max && scan < loceol &&
-		   swash_fetch(PL_utf8_alnum, (U8*)scan, do_utf8)) {
+		   swash_fetch(PL_utf8_alnum, (U8*)scan, do_utf8))
+	    {
 		scan += UTF8SKIP(scan);
 		hardcount++;
 	    }
+	} else if (OP(p) == ALNUMU) {
+	    while (scan < loceol && isALNUMU((U8) *scan)) scan++;
 	} else {
-	    while (scan < loceol && isALNUM(*scan))
-		scan++;
+	    while (scan < loceol && isALNUM(*scan)) scan++;
 	}
 	break;
     case ALNUML:
@@ -5663,17 +5742,20 @@ S_regrepeat(pTHX_ const regexp *prog, const regnode *p, I32 max, int depth)
 	}
 	break;
     case NALNUM:
+    case NALNUMU:
 	if (do_utf8) {
 	    loceol = PL_regeol;
 	    LOAD_UTF8_CHARCLASS_ALNUM();
 	    while (hardcount < max && scan < loceol &&
-		   !swash_fetch(PL_utf8_alnum, (U8*)scan, do_utf8)) {
+		   !swash_fetch(PL_utf8_alnum, (U8*)scan, do_utf8))
+	    {
 		scan += UTF8SKIP(scan);
 		hardcount++;
 	    }
+	} else if (OP(p) == NALNUMU) {
+	    while (scan < loceol && ! isALNUMU((U8) *scan)) scan++;
 	} else {
-	    while (scan < loceol && !isALNUM(*scan))
-		scan++;
+	    while (scan < loceol && ! isALNUM(*scan)) scan++;
 	}
 	break;
     case NALNUML:
@@ -5691,18 +5773,21 @@ S_regrepeat(pTHX_ const regexp *prog, const regnode *p, I32 max, int depth)
 	}
 	break;
     case SPACE:
+    case SPACEU:
 	if (do_utf8) {
 	    loceol = PL_regeol;
 	    LOAD_UTF8_CHARCLASS_SPACE();
 	    while (hardcount < max && scan < loceol &&
 		   (*scan == ' ' ||
-		    swash_fetch(PL_utf8_space,(U8*)scan, do_utf8))) {
+		    swash_fetch(PL_utf8_space,(U8*)scan, do_utf8)))
+	    {
 		scan += UTF8SKIP(scan);
 		hardcount++;
 	    }
+	} else if (OP(p) == SPACEU) {
+	    while (scan < loceol && isSPACEU((U8) *scan)) scan++;
 	} else {
-	    while (scan < loceol && isSPACE(*scan))
-		scan++;
+	    while (scan < loceol && isSPACE(*scan)) scan++;
 	}
 	break;
     case SPACEL:
@@ -5720,18 +5805,21 @@ S_regrepeat(pTHX_ const regexp *prog, const regnode *p, I32 max, int depth)
 	}
 	break;
     case NSPACE:
+    case NSPACEU:
 	if (do_utf8) {
 	    loceol = PL_regeol;
 	    LOAD_UTF8_CHARCLASS_SPACE();
 	    while (hardcount < max && scan < loceol &&
 		   !(*scan == ' ' ||
-		     swash_fetch(PL_utf8_space,(U8*)scan, do_utf8))) {
+		     swash_fetch(PL_utf8_space,(U8*)scan, do_utf8)))
+	    {
 		scan += UTF8SKIP(scan);
 		hardcount++;
 	    }
+	} else if (OP(p) == NSPACEU) {
+	    while (scan < loceol && ! isSPACEU((U8) *scan)) scan++;
 	} else {
-	    while (scan < loceol && !isSPACE(*scan))
-		scan++;
+	    while (scan < loceol && !isSPACE(*scan)) scan++;
 	}
 	break;
     case NSPACEL:

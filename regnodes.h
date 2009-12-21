@@ -6,8 +6,8 @@
 
 /* Regops and State definitions */
 
-#define REGNODE_MAX           	90
-#define REGMATCH_STATE_MAX    	130
+#define REGNODE_MAX           	96
+#define REGMATCH_STATE_MAX    	136
 
 #define	END                   	0	/* 0000 End of program. */
 #define	SUCCEED               	1	/* 0x01 Return from a subroutine, basically. */
@@ -18,22 +18,22 @@
 #define	EOL                   	6	/* 0x06 Match "" at end of line. */
 #define	MEOL                  	7	/* 0x07 Same, assuming multiline. */
 #define	SEOL                  	8	/* 0x08 Same, assuming singleline. */
-#define	BOUND                 	9	/* 0x09 Match "" at any word boundary */
+#define	BOUND                 	9	/* 0x09 Match "" at any word boundary, Posix semantics for non-utf8. */
 #define	BOUNDL                	10	/* 0x0a Match "" at any word boundary */
-#define	NBOUND                	11	/* 0x0b Match "" at any word non-boundary */
+#define	NBOUND                	11	/* 0x0b Match "" at any word non-boundary, Posix semantics for non-utf8. */
 #define	NBOUNDL               	12	/* 0x0c Match "" at any word non-boundary */
 #define	GPOS                  	13	/* 0x0d Matches where last m//g left off. */
 #define	REG_ANY               	14	/* 0x0e Match any one character (except newline). */
 #define	SANY                  	15	/* 0x0f Match any one character. */
 #define	CANY                  	16	/* 0x10 Match any one byte. */
 #define	ANYOF                 	17	/* 0x11 Match character in (or not in) this class. */
-#define	ALNUM                 	18	/* 0x12 Match any alphanumeric character */
+#define	ALNUM                 	18	/* 0x12 Match any alphanumeric character, Posix semantics for non-utf8. */
 #define	ALNUML                	19	/* 0x13 Match any alphanumeric char in locale */
-#define	NALNUM                	20	/* 0x14 Match any non-alphanumeric character */
+#define	NALNUM                	20	/* 0x14 Match any non-alphanumeric character, Posix semantics for non-utf8. */
 #define	NALNUML               	21	/* 0x15 Match any non-alphanumeric char in locale */
-#define	SPACE                 	22	/* 0x16 Match any whitespace character */
+#define	SPACE                 	22	/* 0x16 Match any whitespace character, Posix semantics for non-utf8. */
 #define	SPACEL                	23	/* 0x17 Match any whitespace char in locale */
-#define	NSPACE                	24	/* 0x18 Match any non-whitespace character */
+#define	NSPACE                	24	/* 0x18 Match any non-whitespace character, Posix semantics for non-utf8. */
 #define	NSPACEL               	25	/* 0x19 Match any non-whitespace char in locale */
 #define	DIGIT                 	26	/* 0x1a Match any numeric character */
 #define	DIGITL                	27	/* 0x1b Match any numeric character in locale */
@@ -98,8 +98,14 @@
 #define	HORIZWS               	86	/* 0x56 horizontal whitespace       (Perl 6) */
 #define	NHORIZWS              	87	/* 0x57 not horizontal whitespace   (Perl 6) */
 #define	FOLDCHAR              	88	/* 0x58 codepoint with tricky case folding properties. */
-#define	OPTIMIZED             	89	/* 0x59 Placeholder for dump. */
-#define	PSEUDO                	90	/* 0x5a Pseudo opcode for internal use. */
+#define	ALNUMU                	89	/* 0x59 Match any alphanumeric character, Unicode (Latin1) semantics for non-utf8. */
+#define	NALNUMU               	90	/* 0x5a Match any non-alphanumeric character, Unicode (Latin1) semantics for non-utf8. */
+#define	SPACEU                	91	/* 0x5b Match any whitespace character, Unicode (Latin1) semantics for non-utf8. */
+#define	NSPACEU               	92	/* 0x5c Match any non-whitespace character, Unicode (Latin1) semantics for non-utf8. */
+#define	BOUNDU                	93	/* 0x5d Match "" at any word boundary, Unicode semantics for non-utf8. */
+#define	NBOUNDU               	94	/* 0x5e Match "" at any word non-boundary, Unicode semantics for non-utf8. */
+#define	OPTIMIZED             	95	/* 0x5f Placeholder for dump. */
+#define	PSEUDO                	96	/* 0x60 Pseudo opcode for internal use. */
 	/* ------------ States ------------- */
 #define	TRIE_next             	(REGNODE_MAX + 1)	/* state for TRIE */
 #define	TRIE_next_fail        	(REGNODE_MAX + 2)	/* state for TRIE */
@@ -237,6 +243,12 @@ EXTCONST U8 PL_regkind[] = {
 	HORIZWS,  	/* HORIZWS                */
 	NHORIZWS, 	/* NHORIZWS               */
 	FOLDCHAR, 	/* FOLDCHAR               */
+	ALNUM,    	/* ALNUMU                 */
+	NALNUM,   	/* NALNUMU                */
+	SPACE,    	/* SPACEU                 */
+	NSPACE,   	/* NSPACEU                */
+	BOUND,    	/* BOUNDU                 */
+	NBOUND,   	/* NBOUNDU                */
 	NOTHING,  	/* OPTIMIZED              */
 	PSEUDO,   	/* PSEUDO                 */
 	/* ------------ States ------------- */
@@ -376,6 +388,12 @@ static const U8 regarglen[] = {
 	0,                                   	/* HORIZWS      */
 	0,                                   	/* NHORIZWS     */
 	EXTRA_SIZE(struct regnode_1),        	/* FOLDCHAR     */
+	0,                                   	/* ALNUMU       */
+	0,                                   	/* NALNUMU      */
+	0,                                   	/* SPACEU       */
+	0,                                   	/* NSPACEU      */
+	0,                                   	/* BOUNDU       */
+	0,                                   	/* NBOUNDU      */
 	0,                                   	/* OPTIMIZED    */
 	0,                                   	/* PSEUDO       */
 };
@@ -472,6 +490,12 @@ static const char reg_off_by_arg[] = {
 	0,	/* HORIZWS      */
 	0,	/* NHORIZWS     */
 	0,	/* FOLDCHAR     */
+	0,	/* ALNUMU       */
+	0,	/* NALNUMU      */
+	0,	/* SPACEU       */
+	0,	/* NSPACEU      */
+	0,	/* BOUNDU       */
+	0,	/* NBOUNDU      */
 	0,	/* OPTIMIZED    */
 	0,	/* PSEUDO       */
 };
@@ -573,8 +597,14 @@ EXTCONST char * const PL_reg_name[] = {
 	"HORIZWS",               	/* 0x56 */
 	"NHORIZWS",              	/* 0x57 */
 	"FOLDCHAR",              	/* 0x58 */
-	"OPTIMIZED",             	/* 0x59 */
-	"PSEUDO",                	/* 0x5a */
+	"ALNUMU",                	/* 0x59 */
+	"NALNUMU",               	/* 0x5a */
+	"SPACEU",                	/* 0x5b */
+	"NSPACEU",               	/* 0x5c */
+	"BOUNDU",                	/* 0x5d */
+	"NBOUNDU",               	/* 0x5e */
+	"OPTIMIZED",             	/* 0x5f */
+	"PSEUDO",                	/* 0x60 */
 	/* ------------ States ------------- */
 	"TRIE_next",             	/* REGNODE_MAX +0x01 */
 	"TRIE_next_fail",        	/* REGNODE_MAX +0x02 */

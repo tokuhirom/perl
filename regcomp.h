@@ -18,24 +18,37 @@ typedef OP OP_4tree;			/* Will be redefined later. */
 /* Be really agressive about optimising patterns with trie sequences? */
 #define PERL_ENABLE_EXTENDED_TRIE_OPTIMISATION 1
 
-/* Use old style unicode mappings for perl and posix character classes
+/* old vs new style unicode mappings for perl and posix character classes
  *
- * NOTE: Enabling this essentially breaks character class matching against unicode 
- * strings, so that POSIX char classes match when they shouldn't, and \d matches 
- * way more than 10 characters, and sometimes a charclass and its complement either
- * both match or neither match.
- * NOTE: Disabling this will cause various backwards compatibility issues to rear 
- * their head, and tests to fail. However it will make the charclass behaviour 
- * consistant regardless of internal string type, and make character class inversions
- * consistant. The tests that fail in the regex engine are basically broken tests.
+ * NOTE: Setting this to MATCH_ANY essentially breaks character class
+ * matching against unicode strings, so that POSIX char classes match when they
+ * shouldn't, and \d matches way more than 10 characters, and sometimes a
+ * charclass and its complement either both match or neither match.
  *
- * Personally I think 5.12 should disable this for sure. Its a bit more debatable for
- * 5.10, so for now im leaving it enabled.
- * XXX: It is now enabled for 5.11/5.12
+ * Setting this to MATCH_RESTRICTIVE will cause various backwards
+ * compatibility issues to rear their head, and tests to fail. However it will
+ * make the charclass behaviour consistant regardless of internal string type,
+ * and make character class inversions consistent. But \s, \w, and \d will
+ * match only ASCII which has invoked the Wrath of Larry.
  *
- * -demerphq
+ * Setting this to POSIX_RESTRICTIVE_DSW_ALL, leaves \s, \d, and \w alone, and
+ * when not in a 'use legacy uni8bit', things match correctly, we hope.  The
+ * [[:xxx:]] constructs match only ASCII or locale.
+ *
+ * -demerphq and khw
  */
-#define PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS 1
+
+/* [[:xxx:]] matches only ASCII or locale; \d, \s, \w can match any Unicode
+ * char if utf8 */
+#define POSIX_RESTRICTIVE_DSW_ALL 1
+
+/* All of: [[:xxx:]] and \s, \w \d match only ASCII or locale even if utf8 */
+#define MATCH_RESTRICTIVE 0
+
+/* All of: [[:xxx:]] \s, \w \d can match any Unicode character if utf8 */
+#define MATCH_ALL 2
+
+#define PERL_LEGACY_UNICODE_CHARCLASS_MAPPINGS  POSIX_RESTRICTIVE_DSW_ALL 
 
 /* Should the optimiser take positive assertions into account? */
 #define PERL_ENABLE_POSITIVE_ASSERTION_STUDY 0
@@ -372,6 +385,10 @@ struct regnode_charclass_class {	/* has [[:blah:]] classes */
 #define ANYOF_NVERTWS	(ANYOF_MAX+2)
 #define ANYOF_HORIZWS	(ANYOF_MAX+3)
 #define ANYOF_NHORIZWS	(ANYOF_MAX+4)
+#define ANYOF_WORDP	(ANYOF_MAX+5)	/* [[:word:]], perl extension */
+#define ANYOF_NWORDP	(ANYOF_MAX+6)
+#define ANYOF_DIGITP	(ANYOF_MAX+7)	/* [[:digit:]], perl extension */
+#define ANYOF_NDIGITP	(ANYOF_MAX+8)
 
 /* Backward source code compatibility. */
 
@@ -467,10 +484,10 @@ EXTCONST U8 PL_simple[];
 EXTCONST U8 PL_simple[] = {
     REG_ANY,	SANY,	CANY,
     ANYOF,
-    ALNUM,	ALNUML,
-    NALNUM,	NALNUML,
-    SPACE,	SPACEL,
-    NSPACE,	NSPACEL,
+    ALNUM,	ALNUML, ALNUMU,
+    NALNUM,	NALNUML, NALNUMU,
+    SPACE,	SPACEL, SPACEU,
+    NSPACE,	NSPACEL, NSPACEU,
     DIGIT,	NDIGIT,
     VERTWS,     NVERTWS,
     HORIZWS,    NHORIZWS,

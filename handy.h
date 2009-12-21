@@ -460,10 +460,23 @@ US-ASCII (Basic Latin) range are viewed as not having any case.
 */
 
 #define isALNUM(c)	(isALPHA(c) || isDIGIT(c) || (c) == '_')
+
+/* XXX decide whether to document is ALNUMU and isSPACEU functions.  Should be
+ * implemented as table lookup for speed, along with several of the other
+ * macros. ALNUMU has an extra >= AA test to speed up ASCII-only tests at the
+ * expense of the others */
+#define isALNUMU(c)	(isALNUM(c) || (NATIVE_TO_UNI(c) >= 0xAA \
+	    && ((NATIVE_TO_UNI(c) >= 0xC0 \
+		    && NATIVE_TO_UNI(c) != 0xD7 && NATIVE_TO_UNI(c) != 0xF7) \
+		|| NATIVE_TO_UNI(c) == 0xAA \
+		|| NATIVE_TO_UNI(c) == 0xB5 \
+		|| NATIVE_TO_UNI(c) == 0xBA)))
 #define isIDFIRST(c)	(isALPHA(c) || (c) == '_')
 #define isALPHA(c)	(isUPPER(c) || isLOWER(c))
 #define isSPACE(c) \
 	((c) == ' ' || (c) == '\t' || (c) == '\n' || (c) =='\r' || (c) == '\f')
+#define isSPACEU(c) (isSPACE(c) \
+		    || (NATIVE_TO_UNI(c) == 0x85 || NATIVE_TO_UNI(c) == 0xA0))
 #define isPSXSPC(c)	(isSPACE(c) || (c) == '\v')
 #define isBLANK(c)	((c) == ' ' || (c) == '\t')
 #define isDIGIT(c)	((c) >= '0' && (c) <= '9')

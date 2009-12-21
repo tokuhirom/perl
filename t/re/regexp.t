@@ -14,6 +14,7 @@
 # 	n	expect no match
 # 	c	expect an error
 #	T	the test is a TODO (can be combined with y/n/c)
+#	U	the test will ony work with feature unicode_strings (can be combined with y/n/c)
 #	B	test exposes a known bug in Perl, should be skipped
 #	b	test exposes a known bug in Perl, should be skipped if noamp
 #	t	test exposes a bug with threading, TODO if qr_embed_thr
@@ -115,7 +116,9 @@ foreach (@tests) {
     $reason = 'skipping $&' if $reason eq  '' && $skip_amp;
     $result =~ s/B//i unless $skip;
     my $todo= $result =~ s/T// ? " # TODO" : "";
-    
+    unless ($todo || $::unicode_strings) {
+        $todo= $result =~ s/U// ? " # TODO" : "";
+    }
 
     for my $study ('', 'study $subject', 'utf8::upgrade($subject)',
 		   'utf8::upgrade($subject); study $subject') {
@@ -147,6 +150,14 @@ EOFCODE
                 my \$RE = threads->new(sub {qr$pat})->join();
                 $study;
                 \$match = (\$subject =~ /(?:)\$RE(?:)/) while \$c--;
+                \$got = "$repl";
+EOFCODE
+        }
+        elsif ($::unicode_strings) {
+            $code= <<EOFCODE;
+                use feature "unicode_strings";
+                $study;
+                \$match = (\$subject =~ $OP$pat) while \$c--;
                 \$got = "$repl";
 EOFCODE
         }
