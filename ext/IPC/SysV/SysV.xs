@@ -4,7 +4,7 @@
 
 #include <sys/types.h>
 #ifdef __linux__
-#   include <asm/page.h>
+/* #   include <asm/page.h> */
 #endif
 #if defined(HAS_MSG) || defined(HAS_SEM) || defined(HAS_SHM)
 #ifndef HAS_SEM
